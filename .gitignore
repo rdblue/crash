@@ -5,3 +5,4 @@ packaging/target
 packaging/pkg
 packaging/.jbundler
 packaging/.jbundle.log
+packaging/*
