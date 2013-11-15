@@ -1,2 +1,7 @@
 target
 crash.iws
+packaging/vendor
+packaging/target
+packaging/pkg
+packaging/.jbundler
+packaging/.jbundle.log

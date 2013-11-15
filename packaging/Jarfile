@@ -1,0 +1,6 @@
+repository 'cloudera-releases', 'https://repository.cloudera.com/artifactory/cloudera-repos/'
+jar 'com.cloudera.crash:crash', '0.1.0'
+jar 'org.apache.crunch:crunch-core', '0.8.0-SNAPSHOT'
+jar 'org.jruby:jruby-complete', '1.7.6'
+jar 'org.python:jython-standalone', '2.7-b1'
+jar 'org.apache.hadoop:hadoop-client', '2.0.0-mr1-cdh4.3.0'
