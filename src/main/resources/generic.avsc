@@ -1,0 +1,19 @@
+{
+  "type" : "record",
+  "name" : "Container",
+  "namespace" : "crash",
+  "fields" : [ {
+    "name" : "object",
+    "type" : [
+      "null", "boolean", "int", "long",
+      "float", "double", "bytes", "string",
+      {
+        "type" : "map",
+        "values" : "Container"
+      }, {
+        "type" : "array",
+        "items" : "Container"
+      }
+    ]
+  } ]
+}
