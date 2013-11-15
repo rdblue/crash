@@ -261,6 +261,7 @@ def analytic( name ):
 def _get_analytic():
     """ Returns the last analytic used
     """
+    global _last_analytic
     if _last_analytic == None:
         # name isn't currently used, so just default it
         _last_analytic = Analytic('default')
