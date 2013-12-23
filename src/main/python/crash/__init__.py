@@ -205,12 +205,14 @@ class Analytic(CrashAnalytic):
             return FromGroupedTable
         elif isinstance( self._last_collection, PTable ):
             return FromTable
-        else:
+        elsif isinstance( self._last_collection, PCollection ):
             # arity 3 => context, key, value
             if arity( func ) == 3:
                 return FromTable
             else:
                 return FromCollection
+
+        throw RuntimeError('Last collection is invalid')
 
     def last( self ):
         """ Returns the last collection produced

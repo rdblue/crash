@@ -19,15 +19,7 @@ require 'pathname'
 lib_path = Pathname.new(__FILE__).expand_path.parent
 $LOAD_PATH << lib_path.to_s unless $LOAD_PATH.include? lib_path.to_s
 
-
-module Hadoop
-  import 'org.apache.hadoop.conf.Configuration'
-end
-
-
 module Crunch
-  java_import 'org.apache.crunch.util.DistCache'
-  java_import 'org.apache.crunch.Pair'
   java_import 'org.apache.crunch.PCollection'
   java_import 'org.apache.crunch.PTable'
   java_import 'org.apache.crunch.PGroupedTable'
@@ -50,7 +42,6 @@ module Crash
   java_import 'com.cloudera.crash.generics.CustomData'
 
   GENERIC_TYPE = Crunch::Avros.generics(CustomData::GENERIC_SCHEMA);
-
   COLLECTION_TYPE = GENERIC_TYPE
   TABLE_TYPE = Crunch::Avros.table_of(GENERIC_TYPE, GENERIC_TYPE)
 
@@ -62,68 +53,42 @@ module Crash
 
     # for now, source and sink should be String filenames because the
     # implementation is using read_text_file and write_text_file
-    def initialize( source, sink, options={}, &block )
+    def initialize( name, options={}, &block )
+      @name = name
       @pipeline = $SCRIPT.get_pipeline
-
-      @source = source
-      @sink = sink
 
       @collections_by_name = {}
       @stages_by_name = {}
-
-      @last_collection = @pipeline.readTextFile( source )
-      @collections_by_name[:source] = @last
 
       instance_exec( &block ) if block_given?
     end
 
     def parallel( name, options={}, &block )
-      raise RuntimeError, 'A block is required' unless block_given?
-
-      instance = new_processor( name, carrier_for(@last_collection, block), &block )
-      @last_collection = @last_collection.parallel_do( name, instance, COLLECTION_TYPE )
-
-      # save the resulting collection by name so it can be used later
-      add( name, @last_collection )
-      @stages_by_name[ name ] = instance
-
-      return @last_collection
+      if options[:from]
+        read options[:from]
+      end
+      return add_stage( :parallel, name, &block )
     end
     alias_method :map, :parallel
-    alias_method :foreach, :parallel
-    alias_method :process, :parallel
 
     def reduce( name, options={}, &block )
-      raise RuntimeError, 'A block is required' unless block_given?
-
-      group!
-
-      instance = new_processor( name, Carriers::FromGroupedTable, &block )
-
-      @last_collection = @last_collection.parallel_do( name, instance, COLLECTION_TYPE )
-      add( name, @last_collection )
-      @stages_by_name[ name ] = instance
-
-      return @last_collection
+      return add_stage( :reduce, name, &block )
     end
     alias_method :summarize, :reduce
 
     def combine( name, options={}, &block )
-      raise RuntimeError, 'A block is required' unless block_given?
+      return add_stage( :combine, name, &block )
+    end
 
-      group!
-
-      instance = new_processor( name, Carriers::Combiner, &block )
-      @last_collection = @last_collection.combine_values( instance )
-      add( name, @last_collection )
-      @stages_by_name[ name ] = instance
-
+    def read( source )
+      @last_collection = @pipeline.read_text_file( source )
+      @collections_by_name[ source ] = @last_collection
       return @last_collection
     end
 
-    def write
-      # finish the pipeline
-      @pipeline.write_text_file( @last_collection, @sink )
+    def write( sink )
+      @pipeline.write_text_file( @last_collection, sink )
+      nil
     end
 
     def verbose!
@@ -133,34 +98,37 @@ module Crash
     def getStage( name )
       return @stages_by_name[ name ]
     end
+    alias_method :stage, :getStage
 
     private
 
-    def new_processor( name, carrier_class, &block )
+    def add_stage( stage, name, &block )
+      raise RuntimeError, 'A block is required' unless block_given?
+
+      infected = infect( name, carrier_for( stage, block ), &block )
+
+      case stage
+      when :reduce
+        group!
+        @last_collection = @last_collection.parallel_do( name, infected, COLLECTION_TYPE )
+      when :combine
+        group!
+        @last_collection = @last_collection.combine_values( infected )
+      else
+        @last_collection = @last_collection.parallel_do( name, infected, COLLECTION_TYPE )
+      end
+
+      @collections_by_name[ name ] = @last_collection
+      @stages_by_name[ name ] = infected
+
+      return @last_collection
+    end
+
+    def infect( name, carrier_class, &block )
       $stderr.puts "Instantiating #{carrier_class} for #{name}"
-      # optional: this could test the incoming collection and add handling that
-      # unpacks incoming pairs
+
       inst_class = Class.new( carrier_class ) do
-
         define_method( :work, &block )
-
-        java_alias :emit_pair, :emit, [java.lang.Object, java.lang.Object]
-        begin
-          java_alias :emit_single, :emit, [java.lang.Object]
-        rescue NameError
-          def emit_single( one )
-            emit_pair( one, nil )
-          end
-        end
-
-        def emit(one, two=nil)
-          if two
-            emit_pair( one, two )
-          else
-            emit_single( one )
-          end
-        end
-
       end
 
       # it is possible to name the class by assigning it to a constant here
@@ -184,8 +152,15 @@ module Crash
       end
     end
 
-    def carrier_for( collection, block )
-      case collection
+    def carrier_for( stage, block )
+      case stage
+      when :combine
+        return Carriers::Combiner
+      when :reduce
+        return Carriers::FromGroupedTable
+      end
+
+      case @last_collection
       when Crunch::PGroupedTable
         return Carriers::FromGroupedTable
       when Crunch::PTable
@@ -198,21 +173,35 @@ module Crash
         else
           return Carriers::FromCollection
         end
-      else
-        throw RuntimeError.new('Last collection is invalid')
       end
-    end
 
-    def add( name, collection )
-      @collections_by_name[ name ] = collection if name
-    end
-
-    def get( name )
-      @collections_by_name[ name ]
+      throw RuntimeError.new('Last collection is invalid')
     end
 
     # where do before/after blocks go?
     # before/after blocks will be registered to a name, which can come collect
     # them from the analytic when it is time to run them
   end
+end
+
+def analytic( name, options={}, &block )
+  return Crash::Analytic.new( name, options, &block )
+end
+
+def bananalytic( name, options={}, &block )
+  puts " _"
+  puts "//\\"
+  puts "V  \\"
+  puts " \\  \\_"
+  puts "  \\,'.`-.          BANANALYTICS!"
+  puts "   |\\ `. `."
+  puts "   ( \\  `. `-.                        _,.-:\\"
+  puts "    \\ \\   `.  `-._             __..--' ,-';/"
+  puts "     \\ `.   `-.   `-..___..---'   _.--' ,'/"
+  puts "      `. `.    `-._        __..--'    ,' /"
+  puts "        `. `-_     ``--..''       _.-' ,'"
+  puts "          `-_ `-.___        __,--'   ,'"
+  puts '             `-.__  `----"""    __.-\''
+  puts "                  `--..____..--'"
+  return analytic( name, options, &block )
 end
