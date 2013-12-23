@@ -80,6 +80,10 @@ public class Main extends CrunchTool {
       this.bytes = bytes;
     }
 
+    public String getName() {
+      return name;
+    }
+
     public void setPipeline(Pipeline pipeline) {
       this.pipeline = pipeline;
     }

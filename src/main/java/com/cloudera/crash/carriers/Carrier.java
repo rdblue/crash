@@ -44,15 +44,30 @@ public abstract class Carrier<S, T> extends DoFn<S, T> {
 
   @SuppressWarnings("unchecked")
   public final void emit(Object key, Object value) {
-    Preconditions.checkArgument(emitter != null,
+    Preconditions.checkState(emitter != null,
         "Cannot call emit outside of processing");
     emit((T) Pair.of(key, value));
   }
 
   public final void emit(T output) {
-    Preconditions.checkArgument(emitter != null,
+    Preconditions.checkState(emitter != null,
         "Cannot call emit outside of processing");
     emitter.emit(output);
+  }
+
+  public final void increment(Object counter) {
+    increment(counter, 1);
+  }
+  public final void increment(Object counter, long amount) {
+    increment(script.getName(), counter.toString(), amount);
+  }
+
+  public final void increment(Object group, Object counter) {
+    increment(group, counter, 1);
+  }
+
+  public final void increment(Object group, Object counter, long amount) {
+    increment(group.toString(), counter.toString(), amount);
   }
 
   public abstract void process(S input);

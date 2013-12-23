@@ -59,6 +59,21 @@ public abstract class Combiner<K, V> extends CombineFn<K, V> {
     return iterable;
   }
 
+  public final void increment(Object counter) {
+    increment(counter, 1);
+  }
+  public final void increment(Object counter, long amount) {
+    increment(script.getName(), counter.toString(), amount);
+  }
+
+  public final void increment(Object group, Object counter) {
+    increment(group, counter, 1);
+  }
+
+  public final void increment(Object group, Object counter, long amount) {
+    increment(group.toString(), counter.toString(), amount);
+  }
+
   public abstract void work(K key, Iterable<V> values);
 
   protected Object writeReplace() throws ObjectStreamException {
